@@ -2,10 +2,9 @@ from django.urls import include, path
 from djoser.urls.authtoken import views
 from rest_framework import routers
 
-from recipes.views import (FavoritesViewSet, IngredientsViewSet, RecipeViewSet,
-                           ShoppingCartViewSet, TagListRetriveViewSet)
-from users.views import (SubscriptionViewSet,
-                         UserCreateRetriveViewSet)
+from .views import (FavoritesViewSet, IngredientsViewSet, RecipeViewSet,
+                    ShoppingCartViewSet, SubscriptionViewSet,
+                    TagListRetriveViewSet, UserCreateRetriveViewSet)
 
 router_v1 = routers.DefaultRouter()
 router_v1.register('users', UserCreateRetriveViewSet)
