@@ -1,18 +1,19 @@
-import django_filters
 from django.contrib.auth.hashers import check_password
-from django.core.exceptions import ObjectDoesNotExist
 from django.db.utils import IntegrityError
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import (filters, mixins, pagination, permissions, status,
+from rest_framework import (filters, permissions, status,
                             viewsets)
 from rest_framework.decorators import action
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from recipes.models import Favorites, Ingredients, Recipe, ShoppingCart, Tags
+from recipes.models import Favorite, Ingredient, Recipe, ShoppingCart, Tag
 from users.models import Subscriptions, User
-
+from .filters import IngredientFilter
+from .mixins import (CreateRetriveViewSet, CreateViewSet, ListRetriveViewSet,
+                     CartAndFavoriteViewSet)
+from .paginators import StandardResultsSetPagination
 from .permissions import IsAuthorStaffOrReadOnly
 from .serializers import (FavoritesSerializer,
                           IngredientsListRetriveSerializer, RecipeSerializer,
@@ -22,30 +23,9 @@ from .serializers import (FavoritesSerializer,
                           UserRetrieveSerializer, UserSubscriptionSerializer)
 
 
-class StandardResultsSetPagination(pagination.PageNumberPagination):
-    page_size = 10
-    page_size_query_param = 'page_size'
-    max_page_size = 100
-
-
-class CreateViewSet(mixins.CreateModelMixin,
-                    viewsets.GenericViewSet):
-    permission_classes = (
-        permissions.IsAuthenticated,
-    )
-
-
-class ListRetriveViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
-                         viewsets.GenericViewSet):
-    permission_classes = (
-        permissions.IsAuthenticatedOrReadOnly,
-    )
-    lookup_field = 'id'
-
-
 class TagListRetriveViewSet(ListRetriveViewSet):
     serializer_class = TagSerializer
-    queryset = Tags.objects.all()
+    queryset = Tag.objects.all()
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
@@ -67,17 +47,19 @@ class RecipeViewSet(viewsets.ModelViewSet):
         filename = 'shopping_cart.txt'
         ings = {}
         data = []
-        for item in shopping_cart:
-            ingredients = item.recipe.ingredients.all()
-            for ingredient in ingredients:
-                name = ingredient.name
-                measure = ingredient.measurement_unit
-                amount = item.recipe.recipe_to_ingredient.get(
-                    recipe=item.recipe.id).amount
-                if name in ings:
-                    ings[name][1] += amount
-                else:
-                    ings[name] = [measure, amount]
+        ingredients = shopping_cart.values_list(
+            'recipe__recipe_to_ingredient__ingredient__name',
+            'recipe__recipe_to_ingredient__amount',
+            'recipe__recipe_to_ingredient__ingredient__measurement_unit'
+        )
+        for ingredient in ingredients:
+            name = ingredient[0]
+            amount = ingredient[1]
+            measure = ingredient[2]
+            if name in ings:
+                ings[name][1] += amount
+            else:
+                ings[name] = [measure, amount]
         for key, value in ings.items():
             result = f'{key}({value[0]}) - {value[1]}'
             data.append(result)
@@ -87,88 +69,56 @@ class RecipeViewSet(viewsets.ModelViewSet):
         return response
 
 
-class ShoppingCartViewSet(CreateViewSet):
+class ShoppingCartViewSet(CartAndFavoriteViewSet):
     serializer_class = ShoppingCartSerializer
     queryset = ShoppingCart.objects.all()
 
-    def get_queryset(self):
-        recipe = get_object_or_404(
-            Recipe,
-            pk=self.kwargs.get('id'),
-        )
-        return recipe.recipe_shoppingcart.get()
-
     def create(self, request, *args, **kwargs):
-        super().create(request, *args, **kwargs)
-        id = self.kwargs.get('id')
-        recipe = get_object_or_404(Recipe, id=id)
+        pk = self.kwargs.get('id')
+        recipe = get_object_or_404(Recipe, id=pk)
+        ShoppingCart.objects.get_or_create(user=request.user, recipe=recipe)
         serializer = RecipeToRepresentationSerializer(recipe)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def delete(self, request, *args, **kwargs):
-        id = self.kwargs.get('id')
-        recipe = get_object_or_404(Recipe, id=id)
+        pk = self.kwargs.get('id')
+        recipe = get_object_or_404(Recipe, id=pk)
         try:
             ShoppingCart.objects.get(user=request.user, recipe=recipe).delete()
-        except ObjectDoesNotExist:
+        except ShoppingCart.DoesNotExist:
             data = {'message': 'Такого рецепта нет в корзине'}
             return Response(data=data, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class FavoritesViewSet(CreateViewSet):
+class FavoriteViewSet(CartAndFavoriteViewSet):
     serializer_class = FavoritesSerializer
-    queryset = Favorites.objects.all()
-
-    def get_queryset(self):
-        recipe = get_object_or_404(
-            Recipe,
-            pk=self.kwargs.get('id'),
-        )
-        return recipe.recipe_favorites.get()
+    queryset = Favorite.objects.all()
 
     def create(self, request, *args, **kwargs):
-        super().create(request, *args, **kwargs)
-        id = self.kwargs.get('id')
-        recipe = get_object_or_404(Recipe, id=id)
+        pk = self.kwargs.get('id')
+        recipe = get_object_or_404(Recipe, id=pk)
+        Favorite.objects.get_or_create(user=request.user, recipe=recipe)
         serializer = RecipeToRepresentationSerializer(recipe)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def delete(self, request, *args, **kwargs):
-        id = self.kwargs.get('id')
-        recipe = get_object_or_404(Recipe, id=id)
+        pk = self.kwargs.get('id')
+        recipe = get_object_or_404(Recipe, id=pk)
         try:
-            Favorites.objects.get(user=request.user, recipe=recipe).delete()
-        except ObjectDoesNotExist:
+            Favorite.objects.get(user=request.user, recipe=recipe).delete()
+        except Favorite.DoesNotExist:
             data = {'message': 'Такого рецепта нет в избранном'}
             return Response(data=data, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class IngredientFilter(django_filters.FilterSet):
-    name = django_filters.CharFilter(field_name='name',
-                                     lookup_expr='icontains')
-
-    class Meta:
-        model = Ingredients
-        fields = ('name',)
-
-
 class IngredientsViewSet(ListRetriveViewSet):
     serializer_class = IngredientsListRetriveSerializer
-    queryset = Ingredients.objects.all()
+    queryset = Ingredient.objects.all()
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
     filterset_class = IngredientFilter
     search_fields = ('name', )
-
-
-class CreateRetriveViewSet(mixins.CreateModelMixin,
-                           mixins.RetrieveModelMixin,
-                           viewsets.GenericViewSet):
-    permission_classes = (
-        permissions.IsAuthenticatedOrReadOnly,
-    )
-    lookup_field = 'id'
 
 
 class UserCreateRetriveViewSet(CreateRetriveViewSet):
@@ -177,27 +127,24 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_permissions(self):
-        if self.action == "retrieve":
+        if self.action == 'retrieve':
             self.permission_classes = (permissions.IsAuthenticated, )
-        if self.action == "create":
+        if self.action == 'create':
             self.permission_classes = (permissions.AllowAny, )
         return super(UserCreateRetriveViewSet, self).get_permissions()
 
     def create(self, request):
-        username = request.data.get('username')
+        user = request.user
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
             User.objects.create(
-                username=username,
+                username=user.username,
             )
         except IntegrityError:
             response = Response(status=status.HTTP_400_BAD_REQUEST)
             response.data = {'message': 'username уже занят'}
             return response
-        User.objects.get(
-            username=username,
-        ).delete()
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -208,8 +155,7 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
         permission_classes=(permissions.IsAuthenticated,)
     )
     def me(self, request):
-        username = request.user.username
-        user = get_object_or_404(User, username=username)
+        user = request.user
         serializer = UserRetrieveSerializer(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -220,9 +166,9 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
         permission_classes=(permissions.IsAuthenticated,)
     )
     def set_password(self, request):
-        username = request.user.username
-        user = get_object_or_404(User, username=username)
-        current_password = request.data.get('current_password')
+        user = request.user
+        if request.data.get('current_password'):
+            current_password = request.data.get('current_password')
         new_password = request.data.get('new_password')
         if not check_password(current_password, user.password):
             response = Response(status=status.HTTP_400_BAD_REQUEST)
@@ -244,8 +190,7 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
         subscriptions = Subscriptions.objects.filter(
             subscriber=request.user).all()
         data = []
-        for item in subscriptions:
-            data.append(item.author)
+        data.append(subscriptions.author)
         page = self.paginate_queryset(data)
         if page is not None:
             serializer = UserSubscriptionSerializer(page, many=True)
@@ -266,9 +211,12 @@ class SubscriptionViewSet(CreateViewSet):
         return author.author.get()
 
     def create(self, request, *args, **kwargs):
-        super().create(request, *args, **kwargs)
         id = self.kwargs.get('id')
         author = get_object_or_404(User, id=id)
+        Subscriptions.objects.get_or_create(
+            subscriber=request.user,
+            author=author
+        )
         serializer = UserSubscriptionSerializer(author)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -278,7 +226,7 @@ class SubscriptionViewSet(CreateViewSet):
         try:
             Subscriptions.objects.get(
                 author=author, subscriber=request.user).delete()
-        except ObjectDoesNotExist:
+        except Subscriptions.DoesNotExist:
             data = {'message': 'Вы не подписаны на этого пользователя'}
             return Response(data=data, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)

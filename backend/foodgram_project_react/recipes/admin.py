@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Favorites, Ingredients, Recipe, ShoppingCart, Tags
+from .models import Favorite, Ingredient, Recipe, ShoppingCart, Tag
 
 
 class RecipeAdmin(admin.ModelAdmin):
@@ -19,13 +19,17 @@ class RecipeAdmin(admin.ModelAdmin):
     empty_value_display = '-пусто-'
 
     def favorites_count(self, obj):
-        return Favorites.objects.filter(recipe=obj).count()
+        return Favorite.objects.filter(recipe=obj).count()
 
     def ingredients(self, obj):
-        return "\n".join([a.name for a in obj.ingredient_recipe.all()])
+        return "\n".join([a for a in obj.values(
+            'recipe_to_ingredient__ingredient__name'
+        )])
 
     def tags(self, obj):
-        return "\n".join([a.name for a in obj.tag_recipe.all()])
+        return "\n".join([a for a in obj.values(
+            'recipe_to_tag__tag__name'
+        )])
 
 
 class TagsAdmin(admin.ModelAdmin):
@@ -67,7 +71,7 @@ class FavoritesAdmin(admin.ModelAdmin):
 
 
 admin.site.register(Recipe, RecipeAdmin)
-admin.site.register(Tags, TagsAdmin)
-admin.site.register(Ingredients, IngredientsAdmin)
+admin.site.register(Tag, TagsAdmin)
+admin.site.register(Ingredient, IngredientsAdmin)
 admin.site.register(ShoppingCart, ShoppingCartAdmin)
-admin.site.register(Favorites, FavoritesAdmin)
+admin.site.register(Favorite, FavoritesAdmin)
