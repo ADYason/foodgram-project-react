@@ -1,5 +1,5 @@
 from django.contrib.auth.hashers import check_password
-from django.db.utils import IntegrityError
+from django.db.models import Sum
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import (filters, permissions, status,
@@ -9,7 +9,7 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
 from recipes.models import Favorite, Ingredient, Recipe, ShoppingCart, Tag
-from users.models import Subscriptions, User
+from users.models import Subscription, User
 from .filters import IngredientFilter
 from .mixins import (CreateRetriveViewSet, CreateViewSet, ListRetriveViewSet,
                      CartAndFavoriteViewSet)
@@ -17,7 +17,6 @@ from .paginators import StandardResultsSetPagination
 from .permissions import IsAuthorStaffOrReadOnly
 from .serializers import (FavoritesSerializer,
                           IngredientsListRetriveSerializer, RecipeSerializer,
-                          RecipeToRepresentationSerializer,
                           RegistrationSerializer, ShoppingCartSerializer,
                           SubscriptionSerializer, TagSerializer,
                           UserRetrieveSerializer, UserSubscriptionSerializer)
@@ -49,19 +48,18 @@ class RecipeViewSet(viewsets.ModelViewSet):
         data = []
         ingredients = shopping_cart.values_list(
             'recipe__recipe_to_ingredient__ingredient__name',
-            'recipe__recipe_to_ingredient__amount',
             'recipe__recipe_to_ingredient__ingredient__measurement_unit'
-        )
+        ).annotate(amount=Sum('recipe__recipe_to_ingredient__amount'))
         for ingredient in ingredients:
             name = ingredient[0]
-            amount = ingredient[1]
-            measure = ingredient[2]
+            amount = ingredient[2]
+            measure = ingredient[1]
             if name in ings:
                 ings[name][1] += amount
             else:
                 ings[name] = [measure, amount]
         for key, value in ings.items():
-            result = f'{key}({value[0]}) - {value[1]}'
+            result = f'{key}({value[0]}) - {value[1]}, '
             data.append(result)
         response = HttpResponse(data, content_type='text/plain; charset=UTF-8')
         response['Content-Disposition'] = (
@@ -72,45 +70,13 @@ class RecipeViewSet(viewsets.ModelViewSet):
 class ShoppingCartViewSet(CartAndFavoriteViewSet):
     serializer_class = ShoppingCartSerializer
     queryset = ShoppingCart.objects.all()
-
-    def create(self, request, *args, **kwargs):
-        pk = self.kwargs.get('id')
-        recipe = get_object_or_404(Recipe, id=pk)
-        ShoppingCart.objects.get_or_create(user=request.user, recipe=recipe)
-        serializer = RecipeToRepresentationSerializer(recipe)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    def delete(self, request, *args, **kwargs):
-        pk = self.kwargs.get('id')
-        recipe = get_object_or_404(Recipe, id=pk)
-        try:
-            ShoppingCart.objects.get(user=request.user, recipe=recipe).delete()
-        except ShoppingCart.DoesNotExist:
-            data = {'message': 'Такого рецепта нет в корзине'}
-            return Response(data=data, status=status.HTTP_400_BAD_REQUEST)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    model = ShoppingCart
 
 
 class FavoriteViewSet(CartAndFavoriteViewSet):
     serializer_class = FavoritesSerializer
     queryset = Favorite.objects.all()
-
-    def create(self, request, *args, **kwargs):
-        pk = self.kwargs.get('id')
-        recipe = get_object_or_404(Recipe, id=pk)
-        Favorite.objects.get_or_create(user=request.user, recipe=recipe)
-        serializer = RecipeToRepresentationSerializer(recipe)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    def delete(self, request, *args, **kwargs):
-        pk = self.kwargs.get('id')
-        recipe = get_object_or_404(Recipe, id=pk)
-        try:
-            Favorite.objects.get(user=request.user, recipe=recipe).delete()
-        except Favorite.DoesNotExist:
-            data = {'message': 'Такого рецепта нет в избранном'}
-            return Response(data=data, status=status.HTTP_400_BAD_REQUEST)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    model = Favorite
 
 
 class IngredientsViewSet(ListRetriveViewSet):
@@ -134,17 +100,8 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
         return super(UserCreateRetriveViewSet, self).get_permissions()
 
     def create(self, request):
-        user = request.user
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        try:
-            User.objects.create(
-                username=user.username,
-            )
-        except IntegrityError:
-            response = Response(status=status.HTTP_400_BAD_REQUEST)
-            response.data = {'message': 'username уже занят'}
-            return response
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -167,9 +124,10 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
     )
     def set_password(self, request):
         user = request.user
-        if request.data.get('current_password'):
+        if (request.data.get('current_password') and
+           request.data.get('new_password')):
             current_password = request.data.get('current_password')
-        new_password = request.data.get('new_password')
+            new_password = request.data.get('new_password')
         if not check_password(current_password, user.password):
             response = Response(status=status.HTTP_400_BAD_REQUEST)
             response.data = {'message': 'Cтарый пароль неправильный'}
@@ -187,8 +145,8 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
         permission_classes=(permissions.IsAuthenticated,),
     )
     def subscriptions(self, request):
-        subscriptions = Subscriptions.objects.filter(
-            subscriber=request.user).all()
+        subscriptions = Subscription.objects.filter(
+            subscriber=request.user)
         data = []
         data.append(subscriptions.author)
         page = self.paginate_queryset(data)
@@ -201,19 +159,19 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
 
 class SubscriptionViewSet(CreateViewSet):
     serializer_class = SubscriptionSerializer
-    queryset = Subscriptions.objects.all()
+    queryset = Subscription.objects.all()
 
     def get_queryset(self):
         author = get_object_or_404(
-            Subscriptions,
+            Subscription,
             pk=self.kwargs.get('id'),
         )
-        return author.author.get()
+        return author.author
 
     def create(self, request, *args, **kwargs):
-        id = self.kwargs.get('id')
-        author = get_object_or_404(User, id=id)
-        Subscriptions.objects.get_or_create(
+        pk = self.kwargs.get('id')
+        author = get_object_or_404(User, id=pk)
+        Subscription.objects.get_or_create(
             subscriber=request.user,
             author=author
         )
@@ -221,12 +179,12 @@ class SubscriptionViewSet(CreateViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def delete(self, request, *args, **kwargs):
-        id = self.kwargs.get('id')
-        author = get_object_or_404(User, id=id)
+        pk = self.kwargs.get('id')
+        author = get_object_or_404(User, id=pk)
         try:
-            Subscriptions.objects.get(
+            Subscription.objects.get(
                 author=author, subscriber=request.user).delete()
-        except Subscriptions.DoesNotExist:
+        except Subscription.DoesNotExist:
             data = {'message': 'Вы не подписаны на этого пользователя'}
             return Response(data=data, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)

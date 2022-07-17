@@ -3,17 +3,12 @@ import base64
 from django.contrib.auth.hashers import make_password
 from django.core.files.base import ContentFile
 from rest_framework import serializers
-from rest_framework.validators import UniqueTogetherValidator
+from rest_framework.validators import UniqueTogetherValidator, ValidationError
 
+from .utilits import tag_operator, ingredient_operator
 from recipes.models import (Favorite, Ingredient, Recipe, RecipeIngredient,
                             RecipeTag, ShoppingCart, Tag)
-from users.models import Subscriptions, User
-
-
-def tag_operator(objs, some_model, some_data_storage, model_attr):
-    for obj in objs:
-        some_model.objects.create(recipe=model_attr, tag=obj)
-        some_data_storage.append(obj)
+from users.models import Subscription, User
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -85,7 +80,7 @@ class UserRetrieveSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if not request or request.user.is_anonymous:
             return False
-        return Subscriptions.objects.filter(
+        return Subscription.objects.filter(
             author=request.user, subscriber=obj).exists()
 
 
@@ -185,19 +180,11 @@ class RecipeSerializer(serializers.ModelSerializer):
         ingredients_data = []
         ingredient_create = []
         tag_operator(tags, RecipeTag, tags_data, recipe)
-        for ingredient in ingredients:
-            ing = ingredient.get('id')
-            amount = ingredient.get('amount')
-            new_recing = RecipeIngredient(
-                recipe=recipe,
-                ingredient=ing,
-                amount=amount
-            )
-            if ing in ingredients_data:
-                new_recing.delete()
-            else:
-                ingredient_create.append(new_recing)
-                ingredients_data.append(ing)
+        ingredient_operator(
+            ingredients, RecipeIngredient,
+            recipe, ingredients_data,
+            ingredient_create, ValidationError
+        )
         RecipeIngredient.objects.bulk_create(ingredient_create)
         recipe.tags.add(*tags_data)
         recipe.ingredients.add(*ingredients_data)
@@ -209,19 +196,14 @@ class RecipeSerializer(serializers.ModelSerializer):
         recipe = super().update(instance, validated_data)
         tags_data = []
         ingredients_data = []
+        ingredient_create = []
         tag_operator(tags, RecipeTag, tags_data, recipe)
-        for ingredient in ingredients:
-            ing = ingredient.get('id')
-            amount = ingredient.get('amount')
-            new_recing = RecipeIngredient.objects.create(
-                recipe=recipe,
-                ingredient=ing,
-                amount=amount
-            )
-            if ing in ingredients_data:
-                new_recing.delete()
-            else:
-                ingredients_data.append(ing)
+        ingredient_operator(
+            ingredients, RecipeIngredient,
+            recipe, ingredients_data,
+            ingredient_create, ValidationError
+        )
+        RecipeIngredient.objects.bulk_create(ingredient_create)
         recipe.tags.add(*tags_data)
         recipe.ingredients.add(*ingredients_data)
         return recipe
@@ -317,14 +299,25 @@ class RegistrationSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', )
 
-    def create(self, validated_data):
-        forb_name = ['me', 'Me', 'mE', 'ME']
-        if validated_data['username'] in forb_name:
+    def validate_username(self, value):
+        lower_username = value.lower()
+        if lower_username == 'me':
             raise serializers.ValidationError(
                 'выберите другое username, недопустипмо использовать me')
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError(
+                'выберите другое username, этот уже занят')
+        return value
+
+    def create(self, validated_data):
         validated_data['password'] = make_password(
                                     validated_data.get('password'))
         return User.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data['password'] = make_password(
+                                    validated_data.get('password'))
+        return super().update(instance, validated_data)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -387,7 +380,7 @@ class UserSubscriptionSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if not request or request.user.is_anonymous:
             return False
-        return Subscriptions.objects.filter(
+        return Subscription.objects.filter(
             author=request.user, subscriber=obj).exists()
 
     def get_recipes_count(self, obj):
@@ -403,11 +396,11 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
-        model = Subscriptions
+        model = Subscription
         fields = ('subscriber', 'author')
         validators = [
             UniqueTogetherValidator(
-                queryset=Subscriptions.objects.all(),
+                queryset=Subscription.objects.all(),
                 fields=['subscriber', 'author']
             )
         ]

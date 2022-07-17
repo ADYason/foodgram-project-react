@@ -33,7 +33,7 @@ class User(AbstractUser):
         return self.username
 
 
-class Subscriptions(models.Model):
+class Subscription(models.Model):
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -49,7 +49,10 @@ class Subscriptions(models.Model):
         verbose_name = 'подписка'
         verbose_name_plural = 'подписки'
         ordering = ['author']
-        unique_together = 'author', 'subscriber'
+        constraints = [
+            models.UniqueConstraint(fields=['author', 'subscriber'],
+                                    name='subscription_unique')
+        ]
 
     def __str__(self):
         return self.author
