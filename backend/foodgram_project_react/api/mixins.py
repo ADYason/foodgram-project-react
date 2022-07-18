@@ -31,12 +31,6 @@ class ListRetriveViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
 
 class CartAndFavoriteViewSet(CreateViewSet):
-    def get_queryset(self):
-        recipe = get_object_or_404(
-            Recipe,
-            pk=self.kwargs.get('id'),
-        )
-        return recipe.recipe_shoppingcart
 
     def create(self, request, *args, **kwargs):
         pk = self.kwargs.get('id')

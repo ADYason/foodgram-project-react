@@ -15,8 +15,5 @@ def ingredient_operator(
             ingredient=ing,
             amount=amount
         )
-        if ing in some_data_storage:
-            raise err('Дублированный ингредиент')
-        else:
-            another_data_storage1.append(new_recing)
-            some_data_storage.append(ing)
+        another_data_storage1.append(new_recing)
+        some_data_storage.append(ing)

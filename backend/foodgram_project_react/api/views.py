@@ -54,10 +54,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
             name = ingredient[0]
             amount = ingredient[2]
             measure = ingredient[1]
-            if name in ings:
-                ings[name][1] += amount
-            else:
-                ings[name] = [measure, amount]
+            ings[name] = [measure, amount]
         for key, value in ings.items():
             result = f'{key}({value[0]}) - {value[1]}, '
             data.append(result)
@@ -72,11 +69,25 @@ class ShoppingCartViewSet(CartAndFavoriteViewSet):
     queryset = ShoppingCart.objects.all()
     model = ShoppingCart
 
+    def get_queryset(self):
+        recipe = get_object_or_404(
+            Recipe,
+            pk=self.kwargs.get('id'),
+        )
+        return recipe.recipe_shoppingcart.all()
+
 
 class FavoriteViewSet(CartAndFavoriteViewSet):
     serializer_class = FavoritesSerializer
     queryset = Favorite.objects.all()
     model = Favorite
+
+    def get_queryset(self):
+        recipe = get_object_or_404(
+            Recipe,
+            pk=self.kwargs.get('id'),
+        )
+        return recipe.recipe_favorites.all()
 
 
 class IngredientsViewSet(ListRetriveViewSet):
@@ -124,10 +135,13 @@ class UserCreateRetriveViewSet(CreateRetriveViewSet):
     )
     def set_password(self, request):
         user = request.user
-        if (request.data.get('current_password') and
+        if not (request.data.get('current_password') and
            request.data.get('new_password')):
-            current_password = request.data.get('current_password')
-            new_password = request.data.get('new_password')
+            response = Response(status=status.HTTP_400_BAD_REQUEST)
+            response.data = {'message': 'предоставленные данные неполны'}
+            return response
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
         if not check_password(current_password, user.password):
             response = Response(status=status.HTTP_400_BAD_REQUEST)
             response.data = {'message': 'Cтарый пароль неправильный'}
@@ -166,7 +180,7 @@ class SubscriptionViewSet(CreateViewSet):
             Subscription,
             pk=self.kwargs.get('id'),
         )
-        return author.author
+        return author.author.all()
 
     def create(self, request, *args, **kwargs):
         pk = self.kwargs.get('id')
