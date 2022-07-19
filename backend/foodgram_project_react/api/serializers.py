@@ -171,15 +171,18 @@ class RecipeSerializer(serializers.ModelSerializer):
             'id',
         )
 
-    def create(self, validated_data):
-        ingredients = validated_data.pop('ingredients')
-        for ingredient in ingredients:
+    def validate_ingredients(self, value):
+        for ingredient in value:
             count = 0
-            for x in ingredients:
-                if x == ingredient:
+            for same_ing in value:
+                if same_ing == ingredient:
                     count += 1
             if count > 1:
                 raise ValidationError('дубликат ингредиента')
+        return value
+
+    def create(self, validated_data):
+        ingredients = validated_data.pop('ingredients')
         tags = validated_data.pop('tags')
         recipe = Recipe.objects.create(**validated_data)
         recipe.save()
