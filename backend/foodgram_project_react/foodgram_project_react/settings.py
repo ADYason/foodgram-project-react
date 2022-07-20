@@ -10,7 +10,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SECRET_KEY = os.getenv('SECRET_KEY', default='s+)va+l*0y2_nc4(h(1j5(jqo_2=$ibk_d7q-^e%0u&^hvtdy*')
 
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = json.loads(os.getenv('HOSTS', default='["web", "51.250.24.19", "localhost"]'))
 
