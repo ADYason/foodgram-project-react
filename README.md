@@ -9,7 +9,7 @@
 ### Команда для клонирования
 Клонируйте репозиторий командой в терминале:
 ```
-git clone https://github.com/ADYason/yamdb_final.git
+git clone https://github.com/ADYason/foodgram-project-react.git
 ```
 ### .env
 - SECRET_KEY=Django ключ проекта
