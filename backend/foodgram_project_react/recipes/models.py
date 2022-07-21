@@ -73,6 +73,7 @@ class Recipe(models.Model):
         validators=[MinValueValidator(0), ],
         verbose_name='Время готовки'
     )
+    pub_date = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Рецепт'
@@ -108,7 +109,7 @@ class Favorite(models.Model):
         ]
 
     def __str__(self):
-        return self.user
+        return self.user.username
 
 
 class ShoppingCart(models.Model):
@@ -136,7 +137,7 @@ class ShoppingCart(models.Model):
         ]
 
     def __str__(self):
-        return self.user
+        return self.user.username
 
 
 class RecipeTag(models.Model):
