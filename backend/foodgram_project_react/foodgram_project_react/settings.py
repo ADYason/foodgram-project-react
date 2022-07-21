@@ -1,4 +1,3 @@
-import json
 import os
 
 from dotenv import load_dotenv
@@ -12,9 +11,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', default='s+)va+l*0y2_nc4(h(1j5(jqo_2=$ibk_d
 
 DEBUG = False
 
-ALLOWED_HOSTS = json.loads(os.getenv('HOSTS', default='["web", "51.250.24.19", "localhost"]'))
-
-AUTH_USER_MODEL = 'users.User'
+ALLOWED_HOSTS = os.getenv('HOSTS', default='web 51.250.24.19 localhost 127.0.0.1').split(' ')
 
 INSTALLED_APPS = [
     'django.contrib.admin',

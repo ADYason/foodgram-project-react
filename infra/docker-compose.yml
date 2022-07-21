@@ -18,7 +18,7 @@ services:
       - frontend
 
   web:
-    build: ../backend/foodgram_project_react/
+    image: adyason/foodgram_web:latest
     restart: always
     volumes:
       - static_value:/app/staticfiles/

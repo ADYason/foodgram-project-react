@@ -17,5 +17,6 @@ class SubscriptionsAdmin(admin.ModelAdmin):
     )
 
 
+admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(Subscription, SubscriptionsAdmin)
