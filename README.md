@@ -43,3 +43,7 @@ docker-compose down -v # Для отключения приложения
 
 ### Ссылка на развернутый через docker-compose проект
 http://51.250.24.19/
+
+### Данные для проверки админки
+login: admin1@test.com
+password: 123456
